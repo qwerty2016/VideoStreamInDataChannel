@@ -217,22 +217,22 @@ func handleTasks(queue <-chan UserInfo) {
 
 func newUserHandler(userInfo UserInfo) {
     roomId := userInfo.Room
-    if room, exist := rooms[roomId]; exist {
-	room <- userInfo
+    //if room, exist := rooms[roomId]; exist {
+    if _, exist := rooms[roomId]; exist {
+	//room <- userInfo
     } else {
 	fmt.Println("ERR: newUserHandler - room doesn't exist")
     }
 	/* Send out instructions */
 	/* TODO: may need to separate out this part */
-	/*
-	host := room.getHost()
-	if host.Role == "host" { 
-	    ins <- Instruction{Type:"newPeerConnection", Parent: host.Name, Child: user.Name}
-	} else {
-	    fmt.Println("ERR: Host doesn't exist")
-	}
-    }
-    */
+	
+	// host := room.getHost()
+	host := userInfo.Host
+	//if host.Role == "host" { 
+	    ins <- Instruction{Type:"newPeerConnection", Parent: host, Child: userInfo.User}
+	//} else {
+	    //fmt.Println("ERR: Host doesn't exist")
+	//}
 }
 
 func newHostHandler(userInfo UserInfo) {
@@ -260,25 +260,27 @@ func newHostHandler(userInfo UserInfo) {
 
 func disconnectHandler(userInfo UserInfo) {
     roomId := userInfo.Room
-    if room, exist := rooms[roomId]; exist {
-	room <- userInfo
+//    if room, exist := rooms[roomId]; exist {
+    if _, exist := rooms[roomId]; exist {
+	//room <- userInfo
 	//room.removeUser(user)
 	
 	/* Send out instruction */
-	/*
-	host := room.getHost()
+	//host := room.getHost()
+	host := userInfo.Host;
 	
-	if host.Role == "host" {
-	    ins <- Instruction{Type:"deletePeerConnection", Parent: host.Name, Child: user.Name}
-	} else {
+	//if host.Role == "host" {
+	    ins <- Instruction{Type:"deletePeerConnection", Parent: host, Child: userInfo.User}
+	//} else {
 	    fmt.Println("ERR: Host doesn't exist")
-	}
+	//}
 	
+	/*
 	if len(room.getUsers())==0 {
 	    delete(rooms, roomId)
 	}
-	fmt.Println(room.getUsers())
 	*/
+	//fmt.Println(room.getUsers())
     } else {
 	fmt.Println("ERR: disconnectHandler - disconnecting from a room non-existing")
     }
