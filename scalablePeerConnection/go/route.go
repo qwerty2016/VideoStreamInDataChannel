@@ -203,13 +203,15 @@ func manageRoom(room <-chan UserInfo) {
 }
 
 func handleTasks(queue <-chan UserInfo) {
+    fmt.Println("handleTasks is working")
+
     for {
 	userInfo := <- queue
 	
 	switch userInfo.Type {
-	case "newUser": newUserHandler(userInfo); break;
-	case "host": newHostHandler(userInfo); break;
-	case "disconnectedUser": disconnectHandler(userInfo); break;
+	case "newUser": newUserHandler(userInfo) 
+	case "host": newHostHandler(userInfo)
+	case "disconnectedUser": disconnectHandler(userInfo)
 	}
 	fmt.Printf("New task received -> Type: %s  User: %s  Room: %s\n", userInfo.Type, userInfo.User, userInfo.Room)
     }
@@ -227,9 +229,9 @@ func newUserHandler(userInfo UserInfo) {
 	/* TODO: may need to separate out this part */
 	
 	// host := room.getHost()
-	host := userInfo.Host
+    host := userInfo.Host
 	//if host.Role == "host" { 
-	    ins <- Instruction{Type:"newPeerConnection", Parent: host, Child: userInfo.User}
+    ins <- Instruction{Type:"newPeerConnection", Parent: host, Child: userInfo.User}
 	//} else {
 	    //fmt.Println("ERR: Host doesn't exist")
 	//}
@@ -270,9 +272,9 @@ func disconnectHandler(userInfo UserInfo) {
 	host := userInfo.Host;
 	
 	//if host.Role == "host" {
-	    ins <- Instruction{Type:"deletePeerConnection", Parent: host, Child: userInfo.User}
+	ins <- Instruction{Type:"deletePeerConnection", Parent: host, Child: userInfo.User}
 	//} else {
-	    fmt.Println("ERR: Host doesn't exist")
+	//fmt.Println("ERR: Host doesn't exist")
 	//}
 	
 	/*
