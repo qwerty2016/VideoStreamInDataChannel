@@ -108,7 +108,11 @@ PeerConnection.prototype.openDataChannel = function(cb){
 	};
 
 	self.dataChannel.onmessage = function (msg) {
-		if (isJson(msg.data)){
+		if (msg.data instanceof ArrayBuffer){
+			self.startReceiving(msg.data);	
+		}
+
+		else if (isJson(msg.data)){
 			message = JSON.parse(msg.data);
 
 			if (message.type === "offer"){
@@ -141,8 +145,6 @@ PeerConnection.prototype.openDataChannel = function(cb){
 					respondTime: message.respondTime,
 					receiveTime: receiveTime
 				});
-			}else if (message.type === "streamData"){
-				self.startReceiving(message.data);	
 			}
 		} else {
 			message = msg.data + "<br />"
@@ -223,27 +225,26 @@ PeerConnection.prototype.setLocalStream = function(stream){
 PeerConnection.prototype.startRecording = function(stream) {
 	var self = this;
 	self.sourceBuffer.mode = "sequence";
-	self.tempFlag = true;
-	self.tempFlag2 = true;
-
 	var mediaRecorder = new MediaRecorder(stream);
-	console.log(mediaRecorder.stream)
-	console.log(self.sourceBuffer);
+	self.tempFlag = true;
+
 	mediaRecorder.start(100);
 
 	mediaRecorder.ondataavailable = function (e) {
 		var reader = new FileReader();
 		reader.addEventListener("loadend", function () {
+
+			//self.localVideo.readyState = 4;
+			if (self.localVideo.readyState == 4 && self.tempFlag == true) {
+				self.tempFlag = false;
+				self.localVideo.currentTime = 100;
+			}
+
 			var arr = new Uint8Array(reader.result);
+			console.log(arr.byteLength);
 			self.sourceBuffer.appendBuffer(arr);
-			var streamData = {
-					type: "streamData",
-					data: arr
-			};
 			console.log("startSending");
-			streamMessage = JSON.stringify(streamData);
-			console.log(self.dataChannel.bufferedAmount);
-			self.dataChannel.send(streamMessage);
+			self.dataChannel.send(arr);
 		});
 		reader.readAsArrayBuffer(e.data);
 	};
@@ -254,20 +255,18 @@ PeerConnection.prototype.startRecording = function(stream) {
 }
 
 PeerConnection.prototype.startReceiving = function(data) {
-	console.log("received " + data);
-	/*var self = this;
-	console.log(self.sourceBuffer.updating);
+	var self = this;
 	console.log("startReceiving");
-	var streamData = new TextEncoder("utf-8").encode(data);
-	self.chunks.push(streamData);
-	console.log(self.chunks);
 
-	if (!self.sourceBuffer.updating && self.chunks.length > 0){
-		console.log("adding buffer");
-		streamData = self.chunks.shift();
-		self.sourceBuffer.appendBuffer(streamData);
-	}*/
+//	if (!self.sourceBuffer.updating && self.chunks.length > 0){
+	console.log("adding buffer");
+//	streamData = self.chunks.shift();
+	if (!self.sourceBuffer.updating){
+		self.sourceBuffer.appendBuffer(data);
+	}
+	//}
 }
+
 
 function isJson(str) {
 	try {
