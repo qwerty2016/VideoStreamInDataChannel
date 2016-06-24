@@ -218,6 +218,7 @@ func handleTasks(queue <-chan UserInfo) {
 }
 
 func newUserHandler(userInfo UserInfo) {
+    fmt.Println("newUserHandlerCalled")
     roomId := userInfo.Room
     //if room, exist := rooms[roomId]; exist {
     if _, exist := rooms[roomId]; exist {
@@ -238,8 +239,8 @@ func newUserHandler(userInfo UserInfo) {
 }
 
 func newHostHandler(userInfo UserInfo) {
-    roomId := userInfo.Room
     fmt.Println("newHostHandlerCalled")
+    roomId := userInfo.Room
     if _, exist := rooms[roomId]; !exist {
 	room := make(chan UserInfo)
 	rooms[roomId] = room
