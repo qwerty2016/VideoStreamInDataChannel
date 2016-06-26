@@ -1,5 +1,6 @@
 package main
 
+import "fmt"
 // Graph struct represents a graph that is either undirectional or directional.
 // It may or may not have a head
 type Graph struct {
@@ -51,6 +52,7 @@ func (g *Graph) SetNode(s string, n Node) {
     // TODO: Add error handling
 }
 
+// @PASSED
 // RemoveNode removes a node associated with string s from the graph and 
 // also removes the edges both linking in it and linking out of it`
 func (g *Graph) RemoveNode(s string) {
@@ -80,6 +82,9 @@ func (g *Graph) GetTotalNodes() int {
     return len(g.nodes)
 }
 
+// @PASSED
+// GetChildren function returns the nodes of a specific node referenced by
+// the string name of the node
 func (g *Graph) GetChildren(s string) []Node {
     // Assuming s node exists
     children := make([]Node, 0)
@@ -91,6 +96,9 @@ func (g *Graph) GetChildren(s string) []Node {
     return children
 }
 
+// @PASSED
+// GetParent function returns the parent(s) of a specific node using the
+// associated string of the node
 func (g *Graph) GetParent(s string) []Node {
     parents := make([]Node, 0)
     edges := g.GetInEdges(s)
@@ -139,6 +147,8 @@ func (g *Graph) GetEdge(parent, child string) Edge {
     return e
 }
 
+// @PASSED
+// SetHead function sets the head node of a graph
 func (g *Graph) SetHead(s string) {
     if n, exist := g.nodes[s]; exist {
 	g.head = n
@@ -146,10 +156,17 @@ func (g *Graph) SetHead(s string) {
     //TODO: Add error handling
 }
 
+// @PASSED
+// GetHead function gets the head node of a graph
 func (g *Graph) GetHead() Node {
     return g.head
+    //TODO: Add error handling
 }
 
+// @PASSED
+// AddUniEdge function adds a unidirectional edge between two nodes, the first 
+// node is parent and the second node is the child. Every edge is associated 
+// with a weight which takes an integar value
 func (g *Graph) AddUniEdge(parent, child string, weight int) {
     p := g.GetNode(parent) //NOTE: Make sure it allows changing original value
     c := g.GetNode(child) 
@@ -176,6 +193,7 @@ func (g *Graph) AddBiEdge(parent, child string, weight int) {
 }
 
 // @PASSED
+// RemoveUniEdge functions remove a directional edge from two nodes
 func (g *Graph) RemoveUniEdge(parent, child string) {
     n := g.GetNode(parent)
     e := g.edges[parent][child]
@@ -197,12 +215,16 @@ func (g *Graph) removeEdge(e Edge) {
     //RemoveUniEdge (public)
 }
 
+// @PASSED @TODO Convergence test
 // GetDCMST function finds a Degree-Constrained Maximum Spanning Tree for a 
 // given graph and return it as a subgraph. The current implementation refers
 // to the learning automata method (JA 2013)
 func (g *Graph) GetDCMST(deg int) *Graph {
     // Starting by making an empty map from node to automata 
     var wt int = 0
+    var mst *Graph
+    var dcmst *Graph
+    var debug = false // For debug purpose enable this
     autos := make(map[string]*Automata)
     
     
@@ -210,21 +232,35 @@ func (g *Graph) GetDCMST(deg int) *Graph {
     for k := range g.nodes {
 	nc := len(g.GetChildren(k))
 	autos[k] = NewAutomata(nc, deg)
+	if debug {
+	    fmt.Printf("[DEBUG] Generating Automata: node=%s; actions=%d; limit=%d\n", k, autos[k].actions, autos[k].limit)
+	}
     }
     
     // Start to generate a MST
-    mst := NewGraph()
     
-    // Start from the head -> assuming head exists
-    head := g.head.Value
-    mst.AddNode(head)
-    mst.SetHead(head)
-    parent := head
-    
+    var RECUR_LIMIT = 1000
+    var recur = 0
     var stable bool = false
     
     // Keep generating random MST for the graph until every automata becomes stable
-    for !stable {
+    for !stable && recur < RECUR_LIMIT {
+	recur++
+	mst = NewGraph()
+	// Start from the head -> assuming head exists
+	head := g.head.Value
+	mst.AddNode(head)
+	mst.SetHead(head)
+	parent := head
+	
+	// Reset all automata to active state
+	for _, auto := range autos {
+	    auto.Reset()
+	}
+	
+	if debug {
+	    fmt.Println("[DEBUG] Start to construct random MST")
+	}
 	// Entering into a random MST construction process
 	// Use a flag to denote if we have successfully constructed a mst
 	var found bool = false
@@ -233,10 +269,17 @@ func (g *Graph) GetDCMST(deg int) *Graph {
 	// the parent is active. This means we have assumed that the head starts
 	// to be active. 
 	for !found {
+	    if debug {
+		fmt.Printf("[DEBUG] Start from %s \n", parent)
+	    }
 	    // Getting the automata of parent node
 	    a := autos[parent]
 	    children := g.GetChildren(parent)
 	    
+	    // DEBUG
+	    if debug {
+		a.Print()
+	    }
 	    // check if all of its children is inactive, if all of the children
 	    // automata are inactive then hasActive flag is false, otherwise true
 	    var hasActive bool = false
@@ -253,6 +296,9 @@ func (g *Graph) GetDCMST(deg int) *Graph {
 	    // it means that we have either reached a dead end, in which case we
 	    // need to backtrace the constructed tree and 
 	    if hasActive {
+		if debug {
+		    fmt.Println("[DEBUG] Found active nodes")
+		}
 		i := a.Enum()
 		child := children[i].Value
 		
@@ -267,31 +313,51 @@ func (g *Graph) GetDCMST(deg int) *Graph {
 		
 		// Reward and penalize based on a threshold value: delta, this 
 		// follows from JA (2013)
-		if e.Weight < a.delta {
+		if e.Weight <= a.delta {
 		    a.delta = e.Weight
 		    a.Reward(i)
 		} else {
 		    a.Penalize(i)
 		}
 		
+		
 		// Update the total weight and mst graph, and go back to loop
 		wt += e.Weight
 		mst.AddNode(child)
 		mst.AddUniEdge(parent, child, e.Weight)
 		parent = child
+		if debug {
+		    mst.Print()
+		}
 		
 	    } else { // It means that a node is either at the tail or there is no
 		// active children
+		if debug {
+		    fmt.Println("[DEBUG] Found no more active children")
+		    fmt.Println("[DEBUG] Checking no. of nodes")
+		    fmt.Printf("[DEBUG] Total number of nodes is %d\n", mst.GetTotalNodes())
+		}
+		
 		if mst.GetTotalNodes() == g.GetTotalNodes() {
 		    // It means that all the nodes are covered and we have found
 		    // a suitable mst
 		    found = true
-		    
+		    dcmst = mst
+		    if debug {
+			fmt.Println("[DEBUG] A Random MST is found")
+		    }
 		} else {
 		    // NOTE: Two assumptions are made
 		    // (1) a tree structure -> every node has one parent
 		    // (2) parent is not head -> at least two nodes in g
+		    if debug {
+			fmt.Println("[DEBUG] Start to backtrace")
+		    }
+		    
+		    // Set root node to disable such that backtrace won't loop forever
+		    a.SetActive(false) 
 		    parent = mst.GetParent(parent)[0].Value 
+		    
 		    // TODO: Add error handling
 		}
 	    }
@@ -303,15 +369,64 @@ func (g *Graph) GetDCMST(deg int) *Graph {
 	for _, v := range autos {
 	    if !v.IsStable() {
 		stable = false
+		break
 	    }
 	}
     }
-    return mst
+    
+    if recur >= RECUR_LIMIT {
+	if debug {
+	    fmt.Printf("[DEBUG] RECUR_LIMIT %d is reached\n", RECUR_LIMIT)
+	}
+    }
+    return dcmst
 }
 
+func (g *Graph) Print() {
+    nodes := g.GetAllNodes()
+    fmt.Printf("[PRINT] Nodes = ")
+    for _, n := range nodes {
+	fmt.Printf("%s ", n.Value)
+    }
+    fmt.Printf("\n")
+    
+    edges := g.GetAllEdges()
+    fmt.Printf("[PRINT] Edges = ")
+    for _, e := range edges {
+	fmt.Printf("%v -> %v ", e.Parent.Value, e.Child.Value)
+    }
+    fmt.Printf("\n")
+}
+
+// GetAllEdges function returns all nodes of the graph
+func (g *Graph) GetAllNodes() []Node {
+    nodes := make([]Node, 0)
+    
+    for _, v := range g.nodes {
+	nodes = append(nodes, v)
+    }
+    return nodes
+}
+
+// GetAllEdges function returns all edges of the graph
+func (g *Graph) GetAllEdges() []Edge {
+    edges := make([]Edge, 0)
+    
+    nodes := g.GetAllNodes()
+    
+    // A shortcut method is used by enumerating over all nodes and append all 
+    // outgoing edges from each node to the edges list
+    for _, n := range nodes {
+	edges = append(edges, n.GetEdges()...)
+    }
+    
+    return edges
+}
+
+// @PASSED
 // Compare function compares to graphs and return the differences. Added nodes
 // and added edges are with respect to the target graph in the parameter. 
-func (g *Graph) Compare(t Graph) ([]Edge, []Edge) {
+func (g *Graph) Compare(t *Graph) ([]Edge, []Edge) {
     addedEdges := make([]Edge, 0)
     removedEdges := make([]Edge, 0)
     

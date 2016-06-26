@@ -5,7 +5,6 @@ import (
     "encoding/json"
     "net"
     "bufio"
-    //"sync"
 )
 
 type PeerInfo struct {
@@ -75,6 +74,7 @@ var rooms map[string]chan UserInfo
 var openRoom chan (chan UserInfo)
 var closeRoom chan (chan UserInfo)
 var ins chan Instruction
+var conns map[string]net.Conn
 
 func main() {
     // Listen for incoming connections.
@@ -82,6 +82,7 @@ func main() {
     queue := make(chan UserInfo, 10) // Buffered channel with capacity of 10
     ins = make(chan Instruction, 10)
     rooms = make(map[string]chan UserInfo, 0)
+    conns = make(map[string]net.Conn)
     //rooms = make(map[string]Room)
     
     if err != nil {
@@ -100,10 +101,12 @@ func main() {
 	    continue
 	}
 	
+	// Setup connections map
+	
 	// Handle connections in a new goroutine.
 	go handleRequests(conn, queue)
 	go handleTasks(queue) // Potentially need to increase the number of workers
-	//go handleRooms()
+	go handleRooms()
 	go handleInstructions(conn, ins)
     }
 }
@@ -111,7 +114,7 @@ func main() {
 // Handles incoming requests and parse response from json to UserInfo struct
 func handleRequests(conn net.Conn, queue chan<- UserInfo) {
     fmt.Println("handleRequests is working")
-    defer conn.Close()
+    defer conn.Close() // may cause problem
     
     input := bufio.NewScanner(conn)
     var userInfo UserInfo
@@ -123,6 +126,10 @@ func handleRequests(conn net.Conn, queue chan<- UserInfo) {
 	if err != nil {
 	    continue
 	}
+	username := userInfo.User
+	
+	// Save the connection to a map referred by the username
+	conns[username] = conn // may cause data race condition
 	queue <- userInfo // send userInfo to task queue
     }
 }
@@ -133,10 +140,12 @@ func handleRooms() {
 	select {
 	case room := <- openRoom:
 	    go manageRoom(room)
+	    
 	/*
 	case room := <- closeRoom:
-	    room <- UserInfo{Type:"closeRoom"}
+	    room <- UserInfo{Type:"closeRoom", Room:}
 	    delete(rooms, Room)
+	}
 	*/
 	}
     }
@@ -188,7 +197,7 @@ func manageRoom(room <-chan UserInfo) {
 	
 	newTree := graph.GetDCMST(2) // parameter is the constraint. 1 = traveling salesman, 2 means a hamitonian path problem aka maximum spanning binary tree 
 	    
-	addedEdges, removedEdges := newTree.Compare(*tree)  // addedEdges, removedEdges := graph.Compare(tree, newTree) 
+	addedEdges, removedEdges := newTree.Compare(tree)  // addedEdges, removedEdges := graph.Compare(tree, newTree) 
 	
 	for _, edge := range removedEdges {
 	    ins <- Instruction{Type:"deletePeerConnection", Parent: edge.Parent.Value, Child: edge.Child.Value}
@@ -220,9 +229,8 @@ func handleTasks(queue <-chan UserInfo) {
 func newUserHandler(userInfo UserInfo) {
     fmt.Println("newUserHandlerCalled")
     roomId := userInfo.Room
-    //if room, exist := rooms[roomId]; exist {
-    if _, exist := rooms[roomId]; exist {
-	//room <- userInfo
+    if room, exist := rooms[roomId]; exist {
+	room <- userInfo
     } else {
 	fmt.Println("ERR: newUserHandler - room doesn't exist")
     }
@@ -230,9 +238,9 @@ func newUserHandler(userInfo UserInfo) {
 	/* TODO: may need to separate out this part */
 	
 	// host := room.getHost()
-    host := userInfo.Host
+    //host := userInfo.Host
 	//if host.Role == "host" { 
-    ins <- Instruction{Type:"newPeerConnection", Parent: host, Child: userInfo.User}
+    //ins <- Instruction{Type:"newPeerConnection", Parent: host, Child: userInfo.User}
 	//} else {
 	    //fmt.Println("ERR: Host doesn't exist")
 	//}
@@ -244,9 +252,9 @@ func newHostHandler(userInfo UserInfo) {
     if _, exist := rooms[roomId]; !exist {
 	room := make(chan UserInfo)
 	rooms[roomId] = room
-	//room <- userInfo
-	//openRoom <- room
-	ins <- Instruction{Type:"host", Host: userInfo.User}
+	openRoom <- room
+	room <- userInfo
+	//ins <- Instruction{Type:"host", Host: userInfo.User}
     } else {
 	fmt.Println("ERR: newHostHandler - room already exists")
     }
@@ -263,17 +271,16 @@ func newHostHandler(userInfo UserInfo) {
 
 func disconnectHandler(userInfo UserInfo) {
     roomId := userInfo.Room
-//    if room, exist := rooms[roomId]; exist {
-    if _, exist := rooms[roomId]; exist {
-	//room <- userInfo
+    if room, exist := rooms[roomId]; exist {
+	room <- userInfo
 	//room.removeUser(user)
 	
 	/* Send out instruction */
 	//host := room.getHost()
-	host := userInfo.Host;
+	//host := userInfo.Host;
 	
 	//if host.Role == "host" {
-	ins <- Instruction{Type:"deletePeerConnection", Parent: host, Child: userInfo.User}
+	//ins <- Instruction{Type:"deletePeerConnection", Parent: host, Child: userInfo.User}
 	//} else {
 	//fmt.Println("ERR: Host doesn't exist")
 	//}

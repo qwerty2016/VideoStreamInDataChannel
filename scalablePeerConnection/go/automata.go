@@ -2,6 +2,7 @@ package main
 
 import (
     "github.com/guanyilun/go-sampling/sampling"
+    "fmt"
 )
 
 type Automata struct {
@@ -17,6 +18,7 @@ type Automata struct {
     threshold float64
 }
 
+// @PASSED
 func NewAutomata(actions, limit int) *Automata {
     var a Automata
     a.limit = limit
@@ -40,6 +42,7 @@ func NewAutomata(actions, limit int) *Automata {
     return &a
 }
 
+// @PASSED
 func (a *Automata) Enum() int {
     if a.counter < a.limit {
 	a.counter++
@@ -55,10 +58,12 @@ func (a *Automata) ReEnum() int {
     return a.sampling.Sample()
 }
 
+// @PASSED
 func (a *Automata) IsActive() bool {
     return a.active
 }
 
+// @PASSED
 func (a *Automata) Reward(j int) {
     // Assuming learning reward-penalty (L_R-I) algorithm
     var sum float64 = 0
@@ -74,6 +79,14 @@ func (a *Automata) Reward(j int) {
     
     // Normalize the probabilities after modifying
     a.Normalize()
+    //fmt.Println(a.probs)
+}
+
+// @PASSED
+// Print function is a facilitating function for debug purpuse that prints 
+// out some important properties
+func (a *Automata) Print() {
+    fmt.Printf("[DEBUG] Automata: delta = %v; active = %v; probs = %f; stable = %v\n", a.delta, a.IsActive(), a.probs, a.IsStable())
 }
 
 func (a *Automata) Penalize(j int) {
@@ -95,7 +108,7 @@ func (a *Automata) Penalize(j int) {
     */
 }
 
-
+// @PASSED
 func (a *Automata) Normalize() {
     var norm float64 = 0
     for _, v := range a.probs {
@@ -107,6 +120,7 @@ func (a *Automata) Normalize() {
     }
 }
 
+// @PASSED
 func (a *Automata) IsStable() bool {
     for _, v := range a.probs {
 	if v > a.threshold {
@@ -114,4 +128,13 @@ func (a *Automata) IsStable() bool {
 	}
     }
     return false
+}
+
+func (a *Automata) Reset() {
+    a.counter = 0
+    a.active = true;
+}
+
+func (a *Automata) SetActive(val bool) {
+    a.active = val;
 }
