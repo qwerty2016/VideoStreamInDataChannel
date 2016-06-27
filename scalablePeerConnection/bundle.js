@@ -30,8 +30,7 @@ AllConnection.prototype.init = function(user, socket, config){
 	this.ms.addEventListener('sourceopen', function(){
 		// this.readyState === 'open'. Add source buffer that expects webm chunks.
 		self.sourceBuffer = self.ms.addSourceBuffer('video/webm; codecs="vorbis,vp8"');
-		self.sourceBuffer.mode = "segments";
-		self.sourceBuffer.timestampOffset = 0.05;
+		self.sourceBuffer.mode = "sequence";
 		console.log(self.sourceBuffer);
 	});
 }
@@ -44,7 +43,7 @@ AllConnection.prototype.initCamera = function(){
 		navigator.getUserMedia({ video: true, audio: true }, function(stream){
 			self.stream = stream;
 			//self.startRecording(stream);
-			//self.localVideo.src = window.URL.createObjectURL(stream);
+			self.localVideo.src = window.URL.createObjectURL(stream);
 		}, function (error) {
 			console.log(error);
 		});
@@ -223,7 +222,7 @@ AllConnection.prototype.setLocalStream = function(streamStatus){
 	mediaRecorder.onstop = function(){
 		console.log('Stopped, state = ' + mediaRecorder.state);
 		console.log(self.ms.sourceBuffers);*/
-		/*
+/*
 		var blob = new Blob(chunks, {type: "video/webm"});
 		chunks = [];
 		var videoURL = window.URL.createObjectURL(blob);
@@ -236,8 +235,8 @@ AllConnection.prototype.setLocalStream = function(streamStatus){
 		downloadLink.setAttribute( "href", videoURL);
 		downloadLink.setAttribute( "download", name);
 		downloadLink.setAttribute( "name", name);
-		 */
-	/*};
+ */
+/*};
 
 	mediaRecorder.onwarning = function(e){
 		console.log('Warning: ' + e);
@@ -7528,7 +7527,7 @@ function PeerConnection(local, peer, socket, localVideo, config, sourceBuffer){
 	this.socket = socket;
 	this.localVideo = localVideo;
 	this.configuration = config;
-	this.chunkSize = 10000;
+	this.chunkSize = 50000;
 }
 
 //Visitor setup the p2p connection with a peer
@@ -7749,7 +7748,7 @@ PeerConnection.prototype.startRecording = function(stream) {
 	var self = this;
 	var mediaRecorder = new MediaRecorder(stream);
 //	will freeze if lose socket	
-	mediaRecorder.start(30);
+	mediaRecorder.start(500);
 
 	mediaRecorder.ondataavailable = function (e) {
 		var reader = new FileReader();
@@ -7771,16 +7770,13 @@ PeerConnection.prototype.startRecording = function(stream) {
 						var endByte = self.chunkSize*(i + 1);
 					}
 					self.chunks.push(data.slice(self.chunkSize* i, endByte));
-					if (endByte = data.byteLength){
-						self.chunkUpdating = false;
-					}
-				}
 
-				if(!self.sourceBuffer.updating){
-					console.log("startSending");
 					var chunk = self.chunks.shift();
 					self.dataChannel.send(chunk);
-					self.sourceBuffer.appendBuffer(chunk);
+					console.log(self.chunks.length);
+					if (endByte === data.byteLength){
+						self.chunkUpdating = false;
+					}
 				}
 			}
 		});
@@ -7798,7 +7794,6 @@ PeerConnection.prototype.startReceiving = function(data) {
 	console.log("startReceiving");
 	self.sourceBuffer.appendBuffer(data);
 }
-
 
 function isJson(str) {
 	try {

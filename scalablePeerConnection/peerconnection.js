@@ -14,7 +14,7 @@ function PeerConnection(local, peer, socket, localVideo, config, sourceBuffer){
 	this.socket = socket;
 	this.localVideo = localVideo;
 	this.configuration = config;
-	this.chunkSize = 10000;
+	this.chunkSize = 50000;
 }
 
 //Visitor setup the p2p connection with a peer
@@ -120,7 +120,7 @@ PeerConnection.prototype.openDataChannel = function(cb){
 				self.startReceiving(data);
 			}	
 		}
-
+  // TO DO: change "else if" to "switch"
 		else if (isJson(msg.data)){
 			message = JSON.parse(msg.data);
 
@@ -235,7 +235,7 @@ PeerConnection.prototype.startRecording = function(stream) {
 	var self = this;
 	var mediaRecorder = new MediaRecorder(stream);
 //	will freeze if lose socket	
-	mediaRecorder.start(30);
+	mediaRecorder.start(500);
 
 	mediaRecorder.ondataavailable = function (e) {
 		var reader = new FileReader();
@@ -257,16 +257,13 @@ PeerConnection.prototype.startRecording = function(stream) {
 						var endByte = self.chunkSize*(i + 1);
 					}
 					self.chunks.push(data.slice(self.chunkSize* i, endByte));
-					if (endByte = data.byteLength){
-						self.chunkUpdating = false;
-					}
-				}
 
-				if(!self.sourceBuffer.updating){
-					console.log("startSending");
 					var chunk = self.chunks.shift();
 					self.dataChannel.send(chunk);
-					self.sourceBuffer.appendBuffer(chunk);
+					console.log(self.chunks.length);
+					if (endByte === data.byteLength){
+						self.chunkUpdating = false;
+					}
 				}
 			}
 		});
@@ -284,7 +281,6 @@ PeerConnection.prototype.startReceiving = function(data) {
 	console.log("startReceiving");
 	self.sourceBuffer.appendBuffer(data);
 }
-
 
 function isJson(str) {
 	try {

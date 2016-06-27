@@ -27,8 +27,7 @@ AllConnection.prototype.init = function(user, socket, config){
 	this.ms.addEventListener('sourceopen', function(){
 		// this.readyState === 'open'. Add source buffer that expects webm chunks.
 		self.sourceBuffer = self.ms.addSourceBuffer('video/webm; codecs="vorbis,vp8"');
-		self.sourceBuffer.mode = "segments";
-		self.sourceBuffer.timestampOffset = 0.05;
+		self.sourceBuffer.mode = "sequence";
 		console.log(self.sourceBuffer);
 	});
 }
@@ -36,12 +35,12 @@ AllConnection.prototype.init = function(user, socket, config){
 //initialise the setup of own camera
 AllConnection.prototype.initCamera = function(){
 	var self = this;
-//	To Do: Problem: create 2 video when 2 users enter simultaneously
+	
 	if (self.indicator.hasUserMedia()) {
 		navigator.getUserMedia({ video: true, audio: true }, function(stream){
 			self.stream = stream;
 			//self.startRecording(stream);
-			//self.localVideo.src = window.URL.createObjectURL(stream);
+			self.localVideo.src = window.URL.createObjectURL(stream);
 		}, function (error) {
 			console.log(error);
 		});
@@ -220,7 +219,7 @@ AllConnection.prototype.setLocalStream = function(streamStatus){
 	mediaRecorder.onstop = function(){
 		console.log('Stopped, state = ' + mediaRecorder.state);
 		console.log(self.ms.sourceBuffers);*/
-		/*
+/*
 		var blob = new Blob(chunks, {type: "video/webm"});
 		chunks = [];
 		var videoURL = window.URL.createObjectURL(blob);
@@ -233,8 +232,8 @@ AllConnection.prototype.setLocalStream = function(streamStatus){
 		downloadLink.setAttribute( "href", videoURL);
 		downloadLink.setAttribute( "download", name);
 		downloadLink.setAttribute( "name", name);
-		 */
-	/*};
+ */
+/*};
 
 	mediaRecorder.onwarning = function(e){
 		console.log('Warning: ' + e);
