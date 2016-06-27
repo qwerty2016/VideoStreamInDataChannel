@@ -20,17 +20,21 @@ go.connect(PORT, HOST, function() {
 });
 
 go.on('data', function(data) {
-  console.log('Go: ' + data.toString());
   var jsonStr = data.toString();
-  var res = JSON.parse(jsonStr);
-  switch (res.type) {
-    case "newPeerConnection": 
-      signalSocket.emit("newPeerConnection", res); break;
-    case "deletePeerConnection":
-      signalSocket.emit("deletePeerConnection", res); break;
-    case "host":
-      signalSocket.emit("host", res); break;
+  var jsons = jsonStr.split('\n')
+  for (var i=0; i<jsons.length-1; i++) {
+    console.log('Go: ' + jsons[i]);
+    var res = JSON.parse(jsons[i]);
+    switch (res.type) {
+      case "newPeerConnection": 
+	signalSocket.emit("newPeerConnection", res); break;
+      case "deletePeerConnection":
+	signalSocket.emit("deletePeerConnection", res); break;
+      case "host":
+	signalSocket.emit("host", res); break;
+    }
   }
+  
   
 });
 
