@@ -2,6 +2,8 @@ var PeerConnection = require('./peerconnection.js');
 var Indicator = require('./indicator.js');
 
 function AllConnection(){
+	var host;
+	var parent;
 	var local;
 	var stream;
 	var socket;
@@ -25,6 +27,8 @@ AllConnection.prototype.init = function(user, socket, config){
 	this.ms.addEventListener('sourceopen', function(){
 		// this.readyState === 'open'. Add source buffer that expects webm chunks.
 		self.sourceBuffer = self.ms.addSourceBuffer('video/webm; codecs="vorbis,vp8"');
+		self.sourceBuffer.mode = "segments";
+		self.sourceBuffer.timestampOffset = 0.05;
 		console.log(self.sourceBuffer);
 	});
 }
