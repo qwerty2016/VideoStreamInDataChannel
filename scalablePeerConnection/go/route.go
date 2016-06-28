@@ -234,12 +234,13 @@ func manageRoom(room <-chan UserInfo) {
 	    
 	    addedEdges, removedEdges := newTree.Compare(tree)  // addedEdges, removedEdges := graph.Compare(tree, newTree) 
 	    
+	    host := newTree.GetHead().Value
 	    for _, edge := range removedEdges {
-		ins <- Instruction{Type:"deletePeerConnection", Parent: edge.Parent.Value, Child: edge.Child.Value}
+		ins <- Instruction{Type:"deletePeerConnection", Parent: edge.Parent.Value, Child: edge.Child.Value, Host:host}
 	    }
 	    
 	    for _, edge := range addedEdges { // assuming addedEdges are sorted in good orders 
-		ins <- Instruction{Type:"newPeerConnection", Parent: edge.Parent.Value, Child: edge.Child.Value}
+		ins <- Instruction{Type:"newPeerConnection", Parent: edge.Parent.Value, Child: edge.Child.Value, Host:host}
 	    }
 	
 	    tree = newTree
