@@ -13,6 +13,11 @@ function AllConnection(){
 	this.connection = {};
 	this.indicator = new Indicator();
 	this.ms = new MediaSource();
+	
+	setInterval(function(){
+		console.log("set current time");
+		self.localVideo.currentTime = 10000;
+	}, 10000);
 }
 
 //initialise the setup of AllConnection
@@ -35,7 +40,7 @@ AllConnection.prototype.init = function(user, socket, config){
 //initialise the setup of own camera
 AllConnection.prototype.initCamera = function(){
 	var self = this;
-	
+
 	if (self.indicator.hasUserMedia()) {
 		navigator.getUserMedia({ video: true, audio: true }, function(stream){
 			self.stream = stream;
@@ -54,7 +59,7 @@ AllConnection.prototype.initConnection = function(peer){
 	var self = this;
 	self.localVideo = document.getElementById("localVideo");
 	self.localVideo.autoplay = true;
-	self.connection[peer] = new PeerConnection(self.local, peer, self.socket, self.localVideo, self.configuration, self.sourceBuffer);
+	self.connection[peer] = new PeerConnection(self.local, peer, self.socket, self.configuration, self.sourceBuffer);
 	self.connection[peer].startConnection(function(){
 		self.connection[peer].openDataChannel(function(){
 			self.connection[peer].hostSetupPeerConnection(peer, self.stream, function(){
@@ -77,7 +82,7 @@ AllConnection.prototype.onOffer = function(sdpOffer, cb){
 	self.localVideo = document.getElementById("localVideo");
 	self.localVideo.autoplay = true;
 	peer = sdpOffer.remote;
-	self.connection[peer] = new PeerConnection(self.local, peer, self.socket, self.localVideo, self.configuration, self.sourceBuffer);
+	self.connection[peer] = new PeerConnection(self.local, peer, self.socket, self.configuration, self.sourceBuffer);
 	self.connection[peer].startConnection(function(){
 		self.connection[peer].openDataChannel(function(){
 			self.connection[peer].visitorSetupPeerConnection(peer, /*function(stream){
@@ -120,124 +125,5 @@ AllConnection.prototype.setLocalStream = function(streamStatus){
 	this.stream = this.connection[streamStatus.host].stream;
 	this.startRecording(this.stream);
 }
-
-/*
-	var chunks = [];
-	console.log('Starting...');
-	mediaRecorder = new MediaRecorder(stream);
-	setTimeout(function(){
-		mediaRecorder.stop();
-	}, 5000);
-	mediaRecorder.start();
-	mediaRecorder.ondataavailable = function(e) {
-		chunks.push(e.data);
-		console.log(e.data);
-		console.log(e);
-	};
-	mediaRecorder.onerror = function(e){
-		log('Error: ' + e);
-		console.log('Error: ', e);
-	};
-	mediaRecorder.onstart = function(){
-		console.log('Started, state = ' + mediaRecorder.state);
-	};
-	mediaRecorder.onstop = function(){
-		console.log('Stopped, state = ' + mediaRecorder.state);
-		var blob = new Blob(chunks, {type: "video/webm"});
-		chunks = [];
-		var videoURL = window.URL.createObjectURL(blob);
-		var downloadLink = document.getElementById("download");
-		console.log(videoURL);
-		self.localVideo.src = videoURL;
-		downloadLink.innerHTML = 'Download video file';
-		var rand = Math.floor((Math.random() * 10000000));
-		var name = "video_"+rand+".webm" ;
-		downloadLink.setAttribute( "href", videoURL);
-		downloadLink.setAttribute( "download", name);
-		downloadLink.setAttribute( "name", name);
-	};
-	mediaRecorder.onwarning = function(e){
-		console.log('Warning: ' + e);
-	};*/
-
-
-/*AllConnection.prototype.startRecording = function(stream) {
-	var self = this;
-	console.log(stream);
-
-	console.log(this);
-	console.log("here");
-	//self.localVideo.play();
-	self.sourceBuffer.mode = "sequence";
-	self.tempFlag = true;
-	self.tempFlag2 = true;
-
-	console.log('Starting...');
-	var mediaRecorder = new MediaRecorder(stream);
-	console.log(mediaRecorder.stream)
-	console.log(self.sourceBuffer);
-	mediaRecorder.start(3000);
-
-	mediaRecorder.ondataavailable = function (e) {
-		var reader = new FileReader();
-		reader.addEventListener("loadend", function () {
-			var arr = new Uint8Array(reader.result);
-
-			try{
-				//self.localVideo.readyState = 4;
-				if (self.localVideo.readyState == 4 && self.tempFlag == true) {
-					self.tempFlag = false;
-					self.localVideo.currentTime = 10;
-				}
-				if (self.localVideo.readyState == 1 && self.tempFlag2 == true) {
-					self.tempFlag2 = false;
-					self.localVideo.paused = false;
-				}
-
-
-				self.sourceBuffer.appendBuffer(arr);
-				console.log("correct");
-				console.log(self.localVideo.readyState);;
-				console.log(self.localVideo.currentTime);
-				console.log(self.localVideo.networkState)
-			}catch(e){
-				console.log(e);
-			}
-		});
-		reader.readAsArrayBuffer(e.data);
-	};
-
-	mediaRecorder.onerror = function(e){
-		console.log('Error: ', e);
-	};
-
-
-	mediaRecorder.onstart = function(){
-		console.log('Started, state = ' + mediaRecorder.state);
-	};
-
-	mediaRecorder.onstop = function(){
-		console.log('Stopped, state = ' + mediaRecorder.state);
-		console.log(self.ms.sourceBuffers);*/
-/*
-		var blob = new Blob(chunks, {type: "video/webm"});
-		chunks = [];
-		var videoURL = window.URL.createObjectURL(blob);
-		var downloadLink = document.getElementById("download");
-		console.log(videoURL);
-		self.localVideo.src = videoURL;
-		downloadLink.innerHTML = 'Download video file';
-		var rand = Math.floor((Math.random() * 10000000));
-		var name = "video_"+rand+".webm" ;
-		downloadLink.setAttribute( "href", videoURL);
-		downloadLink.setAttribute( "download", name);
-		downloadLink.setAttribute( "name", name);
- */
-/*};
-
-	mediaRecorder.onwarning = function(e){
-		console.log('Warning: ' + e);
-	};
-}*/
 
 module.exports = AllConnection;

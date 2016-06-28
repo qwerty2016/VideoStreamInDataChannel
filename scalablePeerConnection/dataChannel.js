@@ -1,5 +1,6 @@
 
 function DataChannel(p2pConnection, socket, peer, sourceBuffer){
+	var self = this;
 	var dataChannel;
 	this.p2pConnection = p2pConnection;
 	this.socket = socket;
@@ -9,11 +10,19 @@ function DataChannel(p2pConnection, socket, peer, sourceBuffer){
 	this.chunkUpdating = false;
 	this.chunks = [];
 	this.videoData = [];
-	this.chunkSize = 50000;
+	this.chunkSize = 10000;
+	this.addBufferStatus = "FREE";
 }
 
 DataChannel.prototype.open = function(){
 	var self = this;
+	// could change to other 
+	setInterval(function(){			
+		if (self.chunks.length > 0 && !self.sourceBuffer.updating){
+			var data = self.chunks.shift();
+			self.sourceBuffer.appendBuffer(data);
+		}}, 10);
+
 	var dataChannelOptions = {
 			ordered: true,
 			reliable: true,
@@ -35,22 +44,15 @@ DataChannel.prototype.open = function(){
 	};
 
 	self.dataChannel.onmessage = function (msg) {
-		console.log("received message");
 		if (msg.data instanceof ArrayBuffer){
-			console.log("received arraybuffer");
-			self.chunks.push(msg.data);
-			console.log(self.chunks.length);
-			if (!self.sourceBuffer.updating){
-				var data = self.chunks.shift();
-				self.startReceiving(data);
-			}	
+			self.onStream(msg.data);
 		}
-		// TO DO: change "else if" to "switch"
+
 		else if (isJson(msg.data)){
 			message = JSON.parse(msg.data);
 
 			switch(message.type){
-			
+
 			case MessageEnum.TIMESTAMP:
 				console.log("received time stamp");
 				self.onTimeStamp(message);
@@ -103,12 +105,9 @@ DataChannel.prototype.startRecording = function(stream) {
 			var arr = new Uint8Array(reader.result);
 			self.videoData.push(arr);
 
-			console.log(arr);
 			if (!self.chunkUpdating){
 				self.chunkUpdating = true;
 				var data = self.videoData.shift();
-				console.log("data bytelength");
-				console.log(data.byteLength);
 				var chunkLength = data.byteLength/self.chunkSize ; 
 
 				for (var i = 0; i<= chunkLength ; i++){
@@ -121,8 +120,6 @@ DataChannel.prototype.startRecording = function(stream) {
 
 					var chunk = self.chunks.shift();
 					self.dataChannel.send(chunk);
-					console.log("chunk length");
-					console.log(self.chunks.length);
 					if (endByte === data.byteLength){
 						self.chunkUpdating = false;
 					}
@@ -138,10 +135,8 @@ DataChannel.prototype.startRecording = function(stream) {
 }
 
 
-DataChannel.prototype.startReceiving = function(data) {
-	var self = this;
-	console.log("startReceiving");
-	self.sourceBuffer.appendBuffer(data);
+DataChannel.prototype.onStream = function(streamBuffer) {
+	this.chunks.push(streamBuffer);	
 }
 
 //receive an spd answer

@@ -16,6 +16,11 @@ function AllConnection(){
 	this.connection = {};
 	this.indicator = new Indicator();
 	this.ms = new MediaSource();
+	
+	setInterval(function(){
+		console.log("set current time");
+		self.localVideo.currentTime = 10000;
+	}, 10000);
 }
 
 //initialise the setup of AllConnection
@@ -38,7 +43,7 @@ AllConnection.prototype.init = function(user, socket, config){
 //initialise the setup of own camera
 AllConnection.prototype.initCamera = function(){
 	var self = this;
-	
+
 	if (self.indicator.hasUserMedia()) {
 		navigator.getUserMedia({ video: true, audio: true }, function(stream){
 			self.stream = stream;
@@ -57,7 +62,7 @@ AllConnection.prototype.initConnection = function(peer){
 	var self = this;
 	self.localVideo = document.getElementById("localVideo");
 	self.localVideo.autoplay = true;
-	self.connection[peer] = new PeerConnection(self.local, peer, self.socket, self.localVideo, self.configuration, self.sourceBuffer);
+	self.connection[peer] = new PeerConnection(self.local, peer, self.socket, self.configuration, self.sourceBuffer);
 	self.connection[peer].startConnection(function(){
 		self.connection[peer].openDataChannel(function(){
 			self.connection[peer].hostSetupPeerConnection(peer, self.stream, function(){
@@ -80,7 +85,7 @@ AllConnection.prototype.onOffer = function(sdpOffer, cb){
 	self.localVideo = document.getElementById("localVideo");
 	self.localVideo.autoplay = true;
 	peer = sdpOffer.remote;
-	self.connection[peer] = new PeerConnection(self.local, peer, self.socket, self.localVideo, self.configuration, self.sourceBuffer);
+	self.connection[peer] = new PeerConnection(self.local, peer, self.socket, self.configuration, self.sourceBuffer);
 	self.connection[peer].startConnection(function(){
 		self.connection[peer].openDataChannel(function(){
 			self.connection[peer].visitorSetupPeerConnection(peer, /*function(stream){
@@ -124,129 +129,11 @@ AllConnection.prototype.setLocalStream = function(streamStatus){
 	this.startRecording(this.stream);
 }
 
-/*
-	var chunks = [];
-	console.log('Starting...');
-	mediaRecorder = new MediaRecorder(stream);
-	setTimeout(function(){
-		mediaRecorder.stop();
-	}, 5000);
-	mediaRecorder.start();
-	mediaRecorder.ondataavailable = function(e) {
-		chunks.push(e.data);
-		console.log(e.data);
-		console.log(e);
-	};
-	mediaRecorder.onerror = function(e){
-		log('Error: ' + e);
-		console.log('Error: ', e);
-	};
-	mediaRecorder.onstart = function(){
-		console.log('Started, state = ' + mediaRecorder.state);
-	};
-	mediaRecorder.onstop = function(){
-		console.log('Stopped, state = ' + mediaRecorder.state);
-		var blob = new Blob(chunks, {type: "video/webm"});
-		chunks = [];
-		var videoURL = window.URL.createObjectURL(blob);
-		var downloadLink = document.getElementById("download");
-		console.log(videoURL);
-		self.localVideo.src = videoURL;
-		downloadLink.innerHTML = 'Download video file';
-		var rand = Math.floor((Math.random() * 10000000));
-		var name = "video_"+rand+".webm" ;
-		downloadLink.setAttribute( "href", videoURL);
-		downloadLink.setAttribute( "download", name);
-		downloadLink.setAttribute( "name", name);
-	};
-	mediaRecorder.onwarning = function(e){
-		console.log('Warning: ' + e);
-	};*/
-
-
-/*AllConnection.prototype.startRecording = function(stream) {
-	var self = this;
-	console.log(stream);
-
-	console.log(this);
-	console.log("here");
-	//self.localVideo.play();
-	self.sourceBuffer.mode = "sequence";
-	self.tempFlag = true;
-	self.tempFlag2 = true;
-
-	console.log('Starting...');
-	var mediaRecorder = new MediaRecorder(stream);
-	console.log(mediaRecorder.stream)
-	console.log(self.sourceBuffer);
-	mediaRecorder.start(3000);
-
-	mediaRecorder.ondataavailable = function (e) {
-		var reader = new FileReader();
-		reader.addEventListener("loadend", function () {
-			var arr = new Uint8Array(reader.result);
-
-			try{
-				//self.localVideo.readyState = 4;
-				if (self.localVideo.readyState == 4 && self.tempFlag == true) {
-					self.tempFlag = false;
-					self.localVideo.currentTime = 10;
-				}
-				if (self.localVideo.readyState == 1 && self.tempFlag2 == true) {
-					self.tempFlag2 = false;
-					self.localVideo.paused = false;
-				}
-
-
-				self.sourceBuffer.appendBuffer(arr);
-				console.log("correct");
-				console.log(self.localVideo.readyState);;
-				console.log(self.localVideo.currentTime);
-				console.log(self.localVideo.networkState)
-			}catch(e){
-				console.log(e);
-			}
-		});
-		reader.readAsArrayBuffer(e.data);
-	};
-
-	mediaRecorder.onerror = function(e){
-		console.log('Error: ', e);
-	};
-
-
-	mediaRecorder.onstart = function(){
-		console.log('Started, state = ' + mediaRecorder.state);
-	};
-
-	mediaRecorder.onstop = function(){
-		console.log('Stopped, state = ' + mediaRecorder.state);
-		console.log(self.ms.sourceBuffers);*/
-/*
-		var blob = new Blob(chunks, {type: "video/webm"});
-		chunks = [];
-		var videoURL = window.URL.createObjectURL(blob);
-		var downloadLink = document.getElementById("download");
-		console.log(videoURL);
-		self.localVideo.src = videoURL;
-		downloadLink.innerHTML = 'Download video file';
-		var rand = Math.floor((Math.random() * 10000000));
-		var name = "video_"+rand+".webm" ;
-		downloadLink.setAttribute( "href", videoURL);
-		downloadLink.setAttribute( "download", name);
-		downloadLink.setAttribute( "name", name);
- */
-/*};
-
-	mediaRecorder.onwarning = function(e){
-		console.log('Warning: ' + e);
-	};
-}*/
-
 module.exports = AllConnection;
 },{"./indicator.js":4,"./peerconnection.js":52}],3:[function(require,module,exports){
 
 function DataChannel(p2pConnection, socket, peer, sourceBuffer){
+	var self = this;
 	var dataChannel;
 	this.p2pConnection = p2pConnection;
 	this.socket = socket;
@@ -256,11 +143,19 @@ function DataChannel(p2pConnection, socket, peer, sourceBuffer){
 	this.chunkUpdating = false;
 	this.chunks = [];
 	this.videoData = [];
-	this.chunkSize = 50000;
+	this.chunkSize = 10000;
+	this.addBufferStatus = "FREE";
 }
 
 DataChannel.prototype.open = function(){
 	var self = this;
+	// could change to other 
+	setInterval(function(){			
+		if (self.chunks.length > 0 && !self.sourceBuffer.updating){
+			var data = self.chunks.shift();
+			self.sourceBuffer.appendBuffer(data);
+		}}, 10);
+
 	var dataChannelOptions = {
 			ordered: true,
 			reliable: true,
@@ -282,22 +177,15 @@ DataChannel.prototype.open = function(){
 	};
 
 	self.dataChannel.onmessage = function (msg) {
-		console.log("received message");
 		if (msg.data instanceof ArrayBuffer){
-			console.log("received arraybuffer");
-			self.chunks.push(msg.data);
-			console.log(self.chunks.length);
-			if (!self.sourceBuffer.updating){
-				var data = self.chunks.shift();
-				self.startReceiving(data);
-			}	
+			self.onStream(msg.data);
 		}
-		// TO DO: change "else if" to "switch"
+
 		else if (isJson(msg.data)){
 			message = JSON.parse(msg.data);
 
 			switch(message.type){
-			
+
 			case MessageEnum.TIMESTAMP:
 				console.log("received time stamp");
 				self.onTimeStamp(message);
@@ -350,12 +238,9 @@ DataChannel.prototype.startRecording = function(stream) {
 			var arr = new Uint8Array(reader.result);
 			self.videoData.push(arr);
 
-			console.log(arr);
 			if (!self.chunkUpdating){
 				self.chunkUpdating = true;
 				var data = self.videoData.shift();
-				console.log("data bytelength");
-				console.log(data.byteLength);
 				var chunkLength = data.byteLength/self.chunkSize ; 
 
 				for (var i = 0; i<= chunkLength ; i++){
@@ -368,8 +253,6 @@ DataChannel.prototype.startRecording = function(stream) {
 
 					var chunk = self.chunks.shift();
 					self.dataChannel.send(chunk);
-					console.log("chunk length");
-					console.log(self.chunks.length);
 					if (endByte === data.byteLength){
 						self.chunkUpdating = false;
 					}
@@ -385,10 +268,8 @@ DataChannel.prototype.startRecording = function(stream) {
 }
 
 
-DataChannel.prototype.startReceiving = function(data) {
-	var self = this;
-	console.log("startReceiving");
-	self.sourceBuffer.appendBuffer(data);
+DataChannel.prototype.onStream = function(streamBuffer) {
+	this.chunks.push(streamBuffer);	
 }
 
 //receive an spd answer
@@ -7706,7 +7587,7 @@ function toArray(list, index) {
 var DataChannel = require('./dataChannel.js');
 
 
-function PeerConnection(local, peer, socket, localVideo, config, sourceBuffer){
+function PeerConnection(local, peer, socket, config, sourceBuffer){
 	var p2pConnection;
 	var indicator;
 	var dataChannel;
@@ -7715,7 +7596,6 @@ function PeerConnection(local, peer, socket, localVideo, config, sourceBuffer){
 	this.user = local;
 	this.remote = peer;
 	this.socket = socket;
-	this.localVideo = localVideo;
 	this.configuration = config;
 }
 

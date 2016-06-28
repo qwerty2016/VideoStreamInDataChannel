@@ -1,7 +1,7 @@
 var DataChannel = require('./dataChannel.js');
 
 
-function PeerConnection(local, peer, socket, localVideo, config, sourceBuffer){
+function PeerConnection(local, peer, socket, config, sourceBuffer){
 	var p2pConnection;
 	var indicator;
 	var dataChannel;
@@ -10,7 +10,6 @@ function PeerConnection(local, peer, socket, localVideo, config, sourceBuffer){
 	this.user = local;
 	this.remote = peer;
 	this.socket = socket;
-	this.localVideo = localVideo;
 	this.configuration = config;
 }
 
