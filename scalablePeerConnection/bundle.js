@@ -38,7 +38,7 @@ AllConnection.prototype.init = function(user, socket, config){
 //initialise the setup of own camera
 AllConnection.prototype.initCamera = function(){
 	var self = this;
-//	To Do: Problem: create 2 video when 2 users enter simultaneously
+	
 	if (self.indicator.hasUserMedia()) {
 		navigator.getUserMedia({ video: true, audio: true }, function(stream){
 			self.stream = stream;
@@ -244,7 +244,199 @@ AllConnection.prototype.setLocalStream = function(streamStatus){
 }*/
 
 module.exports = AllConnection;
-},{"./indicator.js":3,"./peerconnection.js":51}],3:[function(require,module,exports){
+},{"./indicator.js":4,"./peerconnection.js":52}],3:[function(require,module,exports){
+
+function DataChannel(p2pConnection, socket, peer, sourceBuffer){
+	var dataChannel;
+	this.p2pConnection = p2pConnection;
+	this.socket = socket;
+	this.peer = peer;
+	this.sourceBuffer = sourceBuffer;
+	this.index = 0;
+	this.chunkUpdating = false;
+	this.chunks = [];
+	this.videoData = [];
+	this.chunkSize = 50000;
+}
+
+DataChannel.prototype.open = function(){
+	var self = this;
+	var dataChannelOptions = {
+			ordered: true,
+			reliable: true,
+			negotiated: true,
+			id: "myChannel"
+	};
+
+	this.dataChannel = this.p2pConnection.createDataChannel("label", dataChannelOptions);
+
+	MessageEnum = {
+			OFFER: "offer",
+			ANSWER: "answer",
+			TIMESTAMP: "timeStamp",
+			TIMESTAMPRESPONSE: "timeStampResponse"
+	}
+
+	self.dataChannel.onerror = function (error) {
+		console.log("Data Channel Error:", error);
+	};
+
+	self.dataChannel.onmessage = function (msg) {
+		console.log("received message");
+		if (msg.data instanceof ArrayBuffer){
+			console.log("received arraybuffer");
+			self.chunks.push(msg.data);
+			console.log(self.chunks.length);
+			if (!self.sourceBuffer.updating){
+				var data = self.chunks.shift();
+				self.startReceiving(data);
+			}	
+		}
+		// TO DO: change "else if" to "switch"
+		else if (isJson(msg.data)){
+			message = JSON.parse(msg.data);
+
+			switch(message.type){
+			
+			case MessageEnum.TIMESTAMP:
+				console.log("received time stamp");
+				self.onTimeStamp(message);
+				break;
+
+			case MessageEnum.TIMESTAMPRESPONSE:
+				self.onTimeStampResponse(message);
+				break;
+			}
+		} else {
+			message = msg.data + "<br />"
+			document.getElementById("info").innerHTML += message;
+		}
+	};
+
+	self.dataChannel.onopen = function () {
+		console.log("dataChannel opened");
+		self.dataChannel.send("connected.");
+		self.socket.emit("dataChannelStatus", {
+			type: "dataChannelStatus",
+			status: "success"
+		});
+	};
+
+	self.dataChannel.onclose = function () {
+		console.log("The Data Channel is Closed");
+	};
+}
+
+DataChannel.prototype.send = function(message){
+	this.dataChannel.send(message);
+}
+
+DataChannel.prototype.addVideo = function(stream) {
+	// Add stream
+	this.startRecording(stream);
+	//this.p2pConnection.addStream(stream);
+}
+
+DataChannel.prototype.startRecording = function(stream) {
+	var self = this;
+	var mediaRecorder = new MediaRecorder(stream);
+//	will freeze if lose socket	
+	mediaRecorder.start(500);
+
+	mediaRecorder.ondataavailable = function (e) {
+		var reader = new FileReader();
+		reader.addEventListener("loadend", function () {
+
+			var arr = new Uint8Array(reader.result);
+			self.videoData.push(arr);
+
+			console.log(arr);
+			if (!self.chunkUpdating){
+				self.chunkUpdating = true;
+				var data = self.videoData.shift();
+				console.log("data bytelength");
+				console.log(data.byteLength);
+				var chunkLength = data.byteLength/self.chunkSize ; 
+
+				for (var i = 0; i<= chunkLength ; i++){
+					if (data.byteLength < self.chunkSize*(i + 1)){
+						var endByte = data.byteLength;
+					} else{
+						var endByte = self.chunkSize*(i + 1);
+					}
+					self.chunks.push(data.slice(self.chunkSize* i, endByte));
+
+					var chunk = self.chunks.shift();
+					self.dataChannel.send(chunk);
+					console.log("chunk length");
+					console.log(self.chunks.length);
+					if (endByte === data.byteLength){
+						self.chunkUpdating = false;
+					}
+				}
+			}
+		});
+		reader.readAsArrayBuffer(e.data);
+	};
+
+	mediaRecorder.onstart = function(){
+		console.log('Started, state = ' + mediaRecorder.state);
+	};
+}
+
+
+DataChannel.prototype.startReceiving = function(data) {
+	var self = this;
+	console.log("startReceiving");
+	self.sourceBuffer.appendBuffer(data);
+}
+
+//receive an spd answer
+DataChannel.prototype.onAnswer = function(sdpAnswer){
+	sdpAnswer = new RTCSessionDescription(sdpAnswer);
+	this.p2pConnection.setRemoteDescription(sdpAnswer,function(){}, function(){});
+	console.log(this.p2pConnection.localDescription);
+	console.log(this.p2pConnection.remoteDescription);
+}
+
+DataChannel.prototype.onTimeStamp = function(timeStamp){
+	var respondTime = Date.now();
+	var timeStampResponse = {
+			type: "timeStampResponse",
+			sendTime: timeStamp.sendTime,
+			respondTime: respondTime
+	}
+	timeStampResponse = JSON.stringify(timeStampResponse);
+	this.dataChannel.send(timeStampResponse);
+}
+
+DataChannel.prototype.onTimeStampResponse = function(timeStampResponse){
+	var self = this;
+	receiveTime = Date.now();
+	console.log("sendTime is " + message.sendTime);
+	console.log("respondTime is " + message.respondTime);
+	console.log("receiveTime is " + receiveTime);
+
+	this.socket.emit("timeStamp", {
+		type: "timeStamp",
+		peer: self.peer,
+		sendTime: message.sendTime,
+		respondTime: message.respondTime,
+		receiveTime: receiveTime
+	});
+}
+
+function isJson(str) {
+	try {
+		JSON.parse(str);
+	} catch (e) {
+		return false;
+	}
+	return true;
+}
+
+module.exports = DataChannel;
+},{}],4:[function(require,module,exports){
 function Indicator(){}
 
 //indicate whether the browser supports user media
@@ -268,7 +460,7 @@ Indicator.prototype.hasRTCPeerConnection = function() {
 }
 
 module.exports = Indicator;
-},{}],4:[function(require,module,exports){
+},{}],5:[function(require,module,exports){
 
 /**
  * Module dependencies.
@@ -362,7 +554,7 @@ exports.connect = lookup;
 exports.Manager = require('./manager');
 exports.Socket = require('./socket');
 
-},{"./manager":5,"./socket":7,"./url":8,"debug":12,"socket.io-parser":45}],5:[function(require,module,exports){
+},{"./manager":6,"./socket":8,"./url":9,"debug":13,"socket.io-parser":46}],6:[function(require,module,exports){
 
 /**
  * Module dependencies.
@@ -921,7 +1113,7 @@ Manager.prototype.onreconnect = function(){
   this.emitAll('reconnect', attempt);
 };
 
-},{"./on":6,"./socket":7,"backo2":9,"component-bind":10,"component-emitter":11,"debug":12,"engine.io-client":15,"indexof":42,"socket.io-parser":45}],6:[function(require,module,exports){
+},{"./on":7,"./socket":8,"backo2":10,"component-bind":11,"component-emitter":12,"debug":13,"engine.io-client":16,"indexof":43,"socket.io-parser":46}],7:[function(require,module,exports){
 
 /**
  * Module exports.
@@ -947,7 +1139,7 @@ function on(obj, ev, fn) {
   };
 }
 
-},{}],7:[function(require,module,exports){
+},{}],8:[function(require,module,exports){
 
 /**
  * Module dependencies.
@@ -1361,7 +1553,7 @@ Socket.prototype.compress = function(compress){
   return this;
 };
 
-},{"./on":6,"component-bind":10,"component-emitter":11,"debug":12,"has-binary":40,"socket.io-parser":45,"to-array":50}],8:[function(require,module,exports){
+},{"./on":7,"component-bind":11,"component-emitter":12,"debug":13,"has-binary":41,"socket.io-parser":46,"to-array":51}],9:[function(require,module,exports){
 (function (global){
 
 /**
@@ -1441,7 +1633,7 @@ function url(uri, loc){
 }
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"debug":12,"parseuri":43}],9:[function(require,module,exports){
+},{"debug":13,"parseuri":44}],10:[function(require,module,exports){
 
 /**
  * Expose `Backoff`.
@@ -1528,7 +1720,7 @@ Backoff.prototype.setJitter = function(jitter){
 };
 
 
-},{}],10:[function(require,module,exports){
+},{}],11:[function(require,module,exports){
 /**
  * Slice reference.
  */
@@ -1553,7 +1745,7 @@ module.exports = function(obj, fn){
   }
 };
 
-},{}],11:[function(require,module,exports){
+},{}],12:[function(require,module,exports){
 
 /**
  * Expose `Emitter`.
@@ -1716,7 +1908,7 @@ Emitter.prototype.hasListeners = function(event){
   return !! this.listeners(event).length;
 };
 
-},{}],12:[function(require,module,exports){
+},{}],13:[function(require,module,exports){
 
 /**
  * This is the web browser implementation of `debug()`.
@@ -1886,7 +2078,7 @@ function localstorage(){
   } catch (e) {}
 }
 
-},{"./debug":13}],13:[function(require,module,exports){
+},{"./debug":14}],14:[function(require,module,exports){
 
 /**
  * This is the common logic for both the Node.js and web browser
@@ -2085,7 +2277,7 @@ function coerce(val) {
   return val;
 }
 
-},{"ms":14}],14:[function(require,module,exports){
+},{"ms":15}],15:[function(require,module,exports){
 /**
  * Helpers.
  */
@@ -2212,11 +2404,11 @@ function plural(ms, n, name) {
   return Math.ceil(ms / n) + ' ' + name + 's';
 }
 
-},{}],15:[function(require,module,exports){
+},{}],16:[function(require,module,exports){
 
 module.exports =  require('./lib/');
 
-},{"./lib/":16}],16:[function(require,module,exports){
+},{"./lib/":17}],17:[function(require,module,exports){
 
 module.exports = require('./socket');
 
@@ -2228,7 +2420,7 @@ module.exports = require('./socket');
  */
 module.exports.parser = require('engine.io-parser');
 
-},{"./socket":17,"engine.io-parser":27}],17:[function(require,module,exports){
+},{"./socket":18,"engine.io-parser":28}],18:[function(require,module,exports){
 (function (global){
 /**
  * Module dependencies.
@@ -2960,7 +3152,7 @@ Socket.prototype.filterUpgrades = function (upgrades) {
 };
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./transport":18,"./transports":19,"component-emitter":25,"debug":12,"engine.io-parser":27,"indexof":42,"parsejson":37,"parseqs":38,"parseuri":43}],18:[function(require,module,exports){
+},{"./transport":19,"./transports":20,"component-emitter":26,"debug":13,"engine.io-parser":28,"indexof":43,"parsejson":38,"parseqs":39,"parseuri":44}],19:[function(require,module,exports){
 /**
  * Module dependencies.
  */
@@ -3117,7 +3309,7 @@ Transport.prototype.onClose = function () {
   this.emit('close');
 };
 
-},{"component-emitter":25,"engine.io-parser":27}],19:[function(require,module,exports){
+},{"component-emitter":26,"engine.io-parser":28}],20:[function(require,module,exports){
 (function (global){
 /**
  * Module dependencies
@@ -3174,7 +3366,7 @@ function polling(opts){
 }
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./polling-jsonp":20,"./polling-xhr":21,"./websocket":23,"xmlhttprequest-ssl":24}],20:[function(require,module,exports){
+},{"./polling-jsonp":21,"./polling-xhr":22,"./websocket":24,"xmlhttprequest-ssl":25}],21:[function(require,module,exports){
 (function (global){
 
 /**
@@ -3416,7 +3608,7 @@ JSONPPolling.prototype.doWrite = function (data, fn) {
 };
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./polling":22,"component-inherit":26}],21:[function(require,module,exports){
+},{"./polling":23,"component-inherit":27}],22:[function(require,module,exports){
 (function (global){
 /**
  * Module requirements.
@@ -3832,7 +4024,7 @@ function unloadHandler() {
 }
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./polling":22,"component-emitter":25,"component-inherit":26,"debug":12,"xmlhttprequest-ssl":24}],22:[function(require,module,exports){
+},{"./polling":23,"component-emitter":26,"component-inherit":27,"debug":13,"xmlhttprequest-ssl":25}],23:[function(require,module,exports){
 /**
  * Module dependencies.
  */
@@ -4081,7 +4273,7 @@ Polling.prototype.uri = function(){
   return schema + '://' + (ipv6 ? '[' + this.hostname + ']' : this.hostname) + port + this.path + query;
 };
 
-},{"../transport":18,"component-inherit":26,"debug":12,"engine.io-parser":27,"parseqs":38,"xmlhttprequest-ssl":24,"yeast":39}],23:[function(require,module,exports){
+},{"../transport":19,"component-inherit":27,"debug":13,"engine.io-parser":28,"parseqs":39,"xmlhttprequest-ssl":25,"yeast":40}],24:[function(require,module,exports){
 (function (global){
 /**
  * Module dependencies.
@@ -4373,7 +4565,7 @@ WS.prototype.check = function(){
 };
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"../transport":18,"component-inherit":26,"debug":12,"engine.io-parser":27,"parseqs":38,"ws":1,"yeast":39}],24:[function(require,module,exports){
+},{"../transport":19,"component-inherit":27,"debug":13,"engine.io-parser":28,"parseqs":39,"ws":1,"yeast":40}],25:[function(require,module,exports){
 // browser shim for xmlhttprequest module
 var hasCORS = require('has-cors');
 
@@ -4411,7 +4603,7 @@ module.exports = function(opts) {
   }
 }
 
-},{"has-cors":36}],25:[function(require,module,exports){
+},{"has-cors":37}],26:[function(require,module,exports){
 
 /**
  * Expose `Emitter`.
@@ -4577,7 +4769,7 @@ Emitter.prototype.hasListeners = function(event){
   return !! this.listeners(event).length;
 };
 
-},{}],26:[function(require,module,exports){
+},{}],27:[function(require,module,exports){
 
 module.exports = function(a, b){
   var fn = function(){};
@@ -4585,7 +4777,7 @@ module.exports = function(a, b){
   a.prototype = new fn;
   a.prototype.constructor = a;
 };
-},{}],27:[function(require,module,exports){
+},{}],28:[function(require,module,exports){
 (function (global){
 /**
  * Module dependencies.
@@ -5183,7 +5375,7 @@ exports.decodePayloadAsBinary = function (data, binaryType, callback) {
 };
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./keys":28,"after":29,"arraybuffer.slice":30,"base64-arraybuffer":31,"blob":32,"has-binary":33,"utf8":35}],28:[function(require,module,exports){
+},{"./keys":29,"after":30,"arraybuffer.slice":31,"base64-arraybuffer":32,"blob":33,"has-binary":34,"utf8":36}],29:[function(require,module,exports){
 
 /**
  * Gets the keys for an object.
@@ -5204,7 +5396,7 @@ module.exports = Object.keys || function keys (obj){
   return arr;
 };
 
-},{}],29:[function(require,module,exports){
+},{}],30:[function(require,module,exports){
 module.exports = after
 
 function after(count, callback, err_cb) {
@@ -5234,7 +5426,7 @@ function after(count, callback, err_cb) {
 
 function noop() {}
 
-},{}],30:[function(require,module,exports){
+},{}],31:[function(require,module,exports){
 /**
  * An abstraction for slicing an arraybuffer even when
  * ArrayBuffer.prototype.slice is not supported
@@ -5265,7 +5457,7 @@ module.exports = function(arraybuffer, start, end) {
   return result.buffer;
 };
 
-},{}],31:[function(require,module,exports){
+},{}],32:[function(require,module,exports){
 /*
  * base64-arraybuffer
  * https://github.com/niklasvh/base64-arraybuffer
@@ -5326,7 +5518,7 @@ module.exports = function(arraybuffer, start, end) {
   };
 })("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/");
 
-},{}],32:[function(require,module,exports){
+},{}],33:[function(require,module,exports){
 (function (global){
 /**
  * Create a blob builder even when vendor prefixes exist
@@ -5426,7 +5618,7 @@ module.exports = (function() {
 })();
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],33:[function(require,module,exports){
+},{}],34:[function(require,module,exports){
 (function (global){
 
 /*
@@ -5488,12 +5680,12 @@ function hasBinary(data) {
 }
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"isarray":34}],34:[function(require,module,exports){
+},{"isarray":35}],35:[function(require,module,exports){
 module.exports = Array.isArray || function (arr) {
   return Object.prototype.toString.call(arr) == '[object Array]';
 };
 
-},{}],35:[function(require,module,exports){
+},{}],36:[function(require,module,exports){
 (function (global){
 /*! https://mths.be/utf8js v2.0.0 by @mathias */
 ;(function(root) {
@@ -5741,7 +5933,7 @@ module.exports = Array.isArray || function (arr) {
 }(this));
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],36:[function(require,module,exports){
+},{}],37:[function(require,module,exports){
 
 /**
  * Module exports.
@@ -5760,7 +5952,7 @@ try {
   module.exports = false;
 }
 
-},{}],37:[function(require,module,exports){
+},{}],38:[function(require,module,exports){
 (function (global){
 /**
  * JSON parse.
@@ -5795,7 +5987,7 @@ module.exports = function parsejson(data) {
   }
 };
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],38:[function(require,module,exports){
+},{}],39:[function(require,module,exports){
 /**
  * Compiles a querystring
  * Returns string representation of the object
@@ -5834,7 +6026,7 @@ exports.decode = function(qs){
   return qry;
 };
 
-},{}],39:[function(require,module,exports){
+},{}],40:[function(require,module,exports){
 'use strict';
 
 var alphabet = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-_'.split('')
@@ -5904,7 +6096,7 @@ yeast.encode = encode;
 yeast.decode = decode;
 module.exports = yeast;
 
-},{}],40:[function(require,module,exports){
+},{}],41:[function(require,module,exports){
 (function (global){
 
 /*
@@ -5967,9 +6159,9 @@ function hasBinary(data) {
 }
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"isarray":41}],41:[function(require,module,exports){
-arguments[4][34][0].apply(exports,arguments)
-},{"dup":34}],42:[function(require,module,exports){
+},{"isarray":42}],42:[function(require,module,exports){
+arguments[4][35][0].apply(exports,arguments)
+},{"dup":35}],43:[function(require,module,exports){
 
 var indexOf = [].indexOf;
 
@@ -5980,7 +6172,7 @@ module.exports = function(arr, obj){
   }
   return -1;
 };
-},{}],43:[function(require,module,exports){
+},{}],44:[function(require,module,exports){
 /**
  * Parses an URI
  *
@@ -6021,7 +6213,7 @@ module.exports = function parseuri(str) {
     return uri;
 };
 
-},{}],44:[function(require,module,exports){
+},{}],45:[function(require,module,exports){
 (function (global){
 /*global Blob,File*/
 
@@ -6166,7 +6358,7 @@ exports.removeBlobs = function(data, callback) {
 };
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./is-buffer":46,"isarray":48}],45:[function(require,module,exports){
+},{"./is-buffer":47,"isarray":49}],46:[function(require,module,exports){
 
 /**
  * Module dependencies.
@@ -6568,7 +6760,7 @@ function error(data){
   };
 }
 
-},{"./binary":44,"./is-buffer":46,"component-emitter":47,"debug":12,"isarray":48,"json3":49}],46:[function(require,module,exports){
+},{"./binary":45,"./is-buffer":47,"component-emitter":48,"debug":13,"isarray":49,"json3":50}],47:[function(require,module,exports){
 (function (global){
 
 module.exports = isBuf;
@@ -6585,11 +6777,11 @@ function isBuf(obj) {
 }
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],47:[function(require,module,exports){
-arguments[4][25][0].apply(exports,arguments)
-},{"dup":25}],48:[function(require,module,exports){
-arguments[4][34][0].apply(exports,arguments)
-},{"dup":34}],49:[function(require,module,exports){
+},{}],48:[function(require,module,exports){
+arguments[4][26][0].apply(exports,arguments)
+},{"dup":26}],49:[function(require,module,exports){
+arguments[4][35][0].apply(exports,arguments)
+},{"dup":35}],50:[function(require,module,exports){
 (function (global){
 /*! JSON v3.3.2 | http://bestiejs.github.io/json3 | Copyright 2012-2014, Kit Cambridge | http://kit.mit-license.org */
 ;(function () {
@@ -7495,7 +7687,7 @@ arguments[4][34][0].apply(exports,arguments)
 }).call(this);
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],50:[function(require,module,exports){
+},{}],51:[function(require,module,exports){
 module.exports = toArray
 
 function toArray(list, index) {
@@ -7510,38 +7702,26 @@ function toArray(list, index) {
     return array
 }
 
-},{}],51:[function(require,module,exports){
+},{}],52:[function(require,module,exports){
+var DataChannel = require('./dataChannel.js');
+
 
 function PeerConnection(local, peer, socket, localVideo, config, sourceBuffer){
 	var p2pConnection;
 	var indicator;
 	var dataChannel;
 	var stream;
-	this.index = 0;
-	this.chunkUpdating = false;
-	this.chunks = [];
-	this.videoData = [];
 	this.sourceBuffer = sourceBuffer;
 	this.user = local;
 	this.remote = peer;
 	this.socket = socket;
 	this.localVideo = localVideo;
 	this.configuration = config;
-	this.chunkSize = 50000;
 }
 
 //Visitor setup the p2p connection with a peer
 PeerConnection.prototype.visitorSetupPeerConnection = function(peer,/* streamCallback,*/ cb) {
 	var self = this;
-	// Setup stream listening
-	/*	this.p2pConnection.onaddstream = function (e) {
-		self.localVideo.src = window.URL.createObjectURL(e.stream);
-		streamCallback(e.stream);
-		console.log("received a stream");
-		console.log(e.stream);
-	};*/
-
-
 
 //	Setup ice handling
 	this.p2pConnection.onicecandidate = function (event) {
@@ -7577,31 +7757,6 @@ PeerConnection.prototype.hostSetupPeerConnection = function(peer, stream, cb) {
 	cb();
 }
 
-PeerConnection.prototype.addVideo = function(stream) {
-	// Add stream
-	var self = this;
-	self.startRecording(stream);
-	//this.p2pConnection.addStream(stream);
-	this.makeOffer( function(sdpOffer){
-		sdpOffer.sdp = sdpOffer.sdp.replace(/a=sendrecv/g,"a=sendonly");
-		sdpOffer = JSON.stringify(sdpOffer);
-		self.dataChannel.send(sdpOffer);
-	});
-}
-
-PeerConnection.prototype.onAddVideo = function(sdpOffer) {
-	// Add stream
-	var self = this;
-	this.p2pConnection.onaddstream = function (e) {
-		self.setLocalStream(e.stream);
-	};
-	this.receiveOffer(sdpOffer, function(sdpAnswer){
-		sdpAnswer = JSON.stringify(sdpAnswer);
-		sdpOffer.sdp = sdpOffer.sdp.replace(/a=sendrecv/g,"a=recvonly");
-		self.dataChannel.send(sdpAnswer);
-	});
-}
-
 //initialise p2pconnection at the start of a peer connection 
 PeerConnection.prototype.startConnection = function(cb){
 	this.p2pConnection = new RTCPeerConnection(this.configuration);
@@ -7610,82 +7765,8 @@ PeerConnection.prototype.startConnection = function(cb){
 
 PeerConnection.prototype.openDataChannel = function(cb){
 	var self = this;
-	var dataChannelOptions = {
-			ordered: true,
-			reliable: true,
-			negotiated: true,
-			id: "myChannel"
-	};
-
-	self.dataChannel = this.p2pConnection.createDataChannel("label", dataChannelOptions);
-
-	self.dataChannel.onerror = function (error) {
-		console.log("Data Channel Error:", error);
-	};
-
-	self.dataChannel.onmessage = function (msg) {
-		if (msg.data instanceof ArrayBuffer){
-			console.log("received arraybuffer");
-			self.chunks.push(msg.data);
-			console.log(self.chunks.length);
-			if (!self.sourceBuffer.updating){
-				var data = self.chunks.shift();
-				self.startReceiving(data);
-			}	
-		}
-
-		else if (isJson(msg.data)){
-			message = JSON.parse(msg.data);
-
-			if (message.type === "offer"){
-				self.onAddVideo(message);
-
-			}else if (message.type === "answer"){
-				self.receiveAnswer(message);
-
-			}else if (message.type === "timeStamp"){
-				var respondTime = Date.now();
-				var timeStampResponse = {
-						type: "timeStampResponse",
-						sendTime: message.sendTime,
-						respondTime: respondTime
-				}
-				timeStampResponse = JSON.stringify(timeStampResponse);
-				self.dataChannel.send(timeStampResponse);
-
-			}else if (message.type === "timeStampResponse"){
-				receiveTime = Date.now();
-				console.log("sendTime is " + message.sendTime);
-				console.log("respondTime is " + message.respondTime);
-				console.log("receiveTime is " + receiveTime);
-
-				self.socket.emit("timeStamp", {
-					type: "timeStamp",
-					user: self.user,
-					peer: self.remote,
-					sendTime: message.sendTime,
-					respondTime: message.respondTime,
-					receiveTime: receiveTime
-				});
-			}
-		} else {
-			message = msg.data + "<br />"
-			document.getElementById("info").innerHTML += message;
-		}
-	};
-
-	self.dataChannel.onopen = function () {
-		console.log("dataChannel opened");
-		self.dataChannel.send("connected.");
-		self.socket.emit("dataChannelStatus", {
-			type: "dataChannelStatus",
-			status: "success"
-		});
-	};
-
-	self.dataChannel.onclose = function () {
-		console.log("The Data Channel is Closed");
-	};
+	this.dataChannel = new DataChannel(self.p2pConnection, self.socket, self.remote, self.sourceBuffer);
+	this.dataChannel.open();
 	cb();
 }
 
@@ -7744,68 +7825,8 @@ PeerConnection.prototype.setLocalStream = function(stream){
 	});
 }
 
-PeerConnection.prototype.startRecording = function(stream) {
-	var self = this;
-	var mediaRecorder = new MediaRecorder(stream);
-//	will freeze if lose socket	
-	mediaRecorder.start(500);
-
-	mediaRecorder.ondataavailable = function (e) {
-		var reader = new FileReader();
-		reader.addEventListener("loadend", function () {
-
-			var arr = new Uint8Array(reader.result);
-			self.videoData.push(arr);
-
-			if (!self.chunkUpdating){
-				self.chunkUpdating = true;
-				var data = self.videoData.shift();
-				console.log(data.byteLength);
-				var chunkLength = data.byteLength/self.chunkSize ; 
-
-				for (var i = 0; i<= chunkLength ; i++){
-					if (data.byteLength < self.chunkSize*(i + 1)){
-						var endByte = data.byteLength;
-					} else{
-						var endByte = self.chunkSize*(i + 1);
-					}
-					self.chunks.push(data.slice(self.chunkSize* i, endByte));
-
-					var chunk = self.chunks.shift();
-					self.dataChannel.send(chunk);
-					console.log(self.chunks.length);
-					if (endByte === data.byteLength){
-						self.chunkUpdating = false;
-					}
-				}
-			}
-		});
-		console.log(e.data);
-		reader.readAsArrayBuffer(e.data);
-	};
-
-	mediaRecorder.onstart = function(){
-		console.log('Started, state = ' + mediaRecorder.state);
-	};
-}
-
-PeerConnection.prototype.startReceiving = function(data) {
-	var self = this;
-	console.log("startReceiving");
-	self.sourceBuffer.appendBuffer(data);
-}
-
-function isJson(str) {
-	try {
-		JSON.parse(str);
-	} catch (e) {
-		return false;
-	}
-	return true;
-}
-
 module.exports = PeerConnection;
-},{}],52:[function(require,module,exports){
+},{"./dataChannel.js":3}],53:[function(require,module,exports){
 var AllConnection = require('./allconnection.js');
 var io = require('socket.io-client');
 
@@ -8002,7 +8023,8 @@ WebRTC.prototype.addVideo = function(peer){
 	console.log(self.allConnection.stream);
 	console.log(peer);
 	console.log(self.allConnection.connection[peer]);
-	this.allConnection.connection[peer].addVideo(self.allConnection.stream);
+	console.log("add Video");
+	this.allConnection.connection[peer].dataChannel.addVideo(self.allConnection.stream);
 }
 
 WebRTC.prototype.setIceServer = function(iceServers){
@@ -8012,7 +8034,7 @@ WebRTC.prototype.setIceServer = function(iceServers){
 
 WebRTC.prototype.sendTimeStamp = function(){
 	var self = this;
-
+	console.log("send time stamp");
 	for (var peer in self.allConnection.connection){
 		self.peerNo++;
 		var time = Date.now();
@@ -8034,5 +8056,5 @@ WebRTC.prototype.clearTimeStamp = function(){
 
 module.exports = WebRTC;
 
-},{"./allconnection.js":2,"socket.io-client":4}]},{},[52])(52)
+},{"./allconnection.js":2,"socket.io-client":5}]},{},[53])(53)
 });

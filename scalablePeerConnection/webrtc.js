@@ -194,7 +194,8 @@ WebRTC.prototype.addVideo = function(peer){
 	console.log(self.allConnection.stream);
 	console.log(peer);
 	console.log(self.allConnection.connection[peer]);
-	this.allConnection.connection[peer].addVideo(self.allConnection.stream);
+	console.log("add Video");
+	this.allConnection.connection[peer].dataChannel.addVideo(self.allConnection.stream);
 }
 
 WebRTC.prototype.setIceServer = function(iceServers){
@@ -204,7 +205,7 @@ WebRTC.prototype.setIceServer = function(iceServers){
 
 WebRTC.prototype.sendTimeStamp = function(){
 	var self = this;
-
+	console.log("send time stamp");
 	for (var peer in self.allConnection.connection){
 		self.peerNo++;
 		var time = Date.now();
