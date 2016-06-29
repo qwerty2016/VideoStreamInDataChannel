@@ -109,14 +109,4 @@ PeerConnection.prototype.addCandidate = function(iceCandidate) {
 	});
 }
 
-PeerConnection.prototype.setLocalStream = function(stream){
-	var self = this;
-	this.stream = stream;
-	this.socket.emit("streamStatus", {
-		type: "streamStatus",
-		host: self.remote,
-		status: "success"
-	});
-}
-
 module.exports = PeerConnection;

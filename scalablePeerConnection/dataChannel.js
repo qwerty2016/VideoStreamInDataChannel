@@ -6,19 +6,19 @@ function DataChannel(p2pConnection, socket, peer, sourceBuffer){
 	this.socket = socket;
 	this.peer = peer;
 	this.sourceBuffer = sourceBuffer;
-	this.index = 0;
 	this.chunkUpdating = false;
 	this.chunks = [];
 	this.videoData = [];
 	this.chunkSize = 10000;
-	this.addBufferStatus = "FREE";
 }
 
 DataChannel.prototype.open = function(){
 	var self = this;
 	// could change to other 
 	setInterval(function(){			
+		console.log("here");
 		if (self.chunks.length > 0 && !self.sourceBuffer.updating){
+			console.log(self.sourceBuffer);
 			var data = self.chunks.shift();
 			self.sourceBuffer.appendBuffer(data);
 		}}, 10);
@@ -90,48 +90,6 @@ DataChannel.prototype.addVideo = function(stream) {
 	// Add stream
 	this.startRecording(stream);
 	//this.p2pConnection.addStream(stream);
-}
-
-DataChannel.prototype.startRecording = function(stream) {
-	var self = this;
-	var mediaRecorder = new MediaRecorder(stream);
-//	will freeze if lose socket	
-	mediaRecorder.start(500);
-
-	mediaRecorder.ondataavailable = function (e) {
-		var reader = new FileReader();
-		reader.addEventListener("loadend", function () {
-
-			var arr = new Uint8Array(reader.result);
-			self.videoData.push(arr);
-
-			if (!self.chunkUpdating){
-				self.chunkUpdating = true;
-				var data = self.videoData.shift();
-				var chunkLength = data.byteLength/self.chunkSize ; 
-
-				for (var i = 0; i<= chunkLength ; i++){
-					if (data.byteLength < self.chunkSize*(i + 1)){
-						var endByte = data.byteLength;
-					} else{
-						var endByte = self.chunkSize*(i + 1);
-					}
-					self.chunks.push(data.slice(self.chunkSize* i, endByte));
-
-					var chunk = self.chunks.shift();
-					self.dataChannel.send(chunk);
-					if (endByte === data.byteLength){
-						self.chunkUpdating = false;
-					}
-				}
-			}
-		});
-		reader.readAsArrayBuffer(e.data);
-	};
-
-	mediaRecorder.onstart = function(){
-		console.log('Started, state = ' + mediaRecorder.state);
-	};
 }
 
 

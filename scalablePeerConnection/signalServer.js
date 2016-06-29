@@ -147,7 +147,7 @@ status: "fail"
 
 //	an user send an offer to peer
 	socket.on("SDPOffer", function(sdpOffer){
-
+		
 		try {
 			if (user[sdpOffer.remote]){
 				user[sdpOffer.remote].emit("SDPOffer", {
@@ -215,7 +215,7 @@ status: "fail"
 	socket.on("newPeerConnection", function(userData){
 		try {
 			console.log(userData);
-			user[userData.parent].emit("newPeerConnection", userData.child);
+			user[userData.parent].emit("newPeerConnection", userData);
 			//	console.log("User " + command[1] + " initialise connection to user " + command[2]);
 		} catch(e){
 			console.log(e);

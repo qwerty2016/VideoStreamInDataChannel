@@ -110,14 +110,13 @@ function WebRTC(server){
 		self.onMessage(messageData);
 	});
 
-	self.socket.on("newPeerConnection", function(peer){
-		self.addVideo(peer);
+	self.socket.on("newPeerConnection", function(userData){
+		if (userData.host === userData.parent){
+			self.addVideo(userData.child);
+		} else{
+			self.transferVideo(userData.child);
+		}
 	});
-
-	self.socket.on("streamStatus", function(streamStatus){
-		self.allConnection.setLocalStream(streamStatus);
-	});
-
 }
 
 
@@ -191,11 +190,7 @@ WebRTC.prototype.onMessage = function(messageData){
 
 WebRTC.prototype.addVideo = function(peer){
 	var self = this;
-	console.log(self.allConnection.stream);
-	console.log(peer);
-	console.log(self.allConnection.connection[peer]);
-	console.log("add Video");
-	this.allConnection.connection[peer].dataChannel.addVideo(self.allConnection.stream);
+	this.allConnection.addChild(peer);
 }
 
 WebRTC.prototype.setIceServer = function(iceServers){
