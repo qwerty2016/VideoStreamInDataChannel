@@ -33,7 +33,8 @@ AllConnection.prototype.init = function(user, socket, config){
 	this.localVideo.autoplay = true;
 	this.ms.addEventListener('sourceopen', function(){
 		// this.readyState === 'open'. Add source buffer that expects webm chunks.
-		self.sourceBuffer = self.ms.addSourceBuffer('video/webm; codecs="vorbis,vp9"');
+		// self.sourceBuffer = self.ms.addSourceBuffer('video/webm; codecs="vorbis,vp9"'); 
+		self.sourceBuffer = self.ms.addSourceBuffer('video/webm; codecs="vp8"'); //DEBUG
 		self.sourceBuffer.mode = "sequence";
 		console.log(self.sourceBuffer);
 	});
@@ -45,7 +46,8 @@ AllConnection.prototype.initCamera = function(){
 	var self = this;
 
 	if (self.indicator.hasUserMedia()) {
-		navigator.getUserMedia({ video: true, audio: true }, function(stream){
+		//navigator.getUserMedia({ video: true, audio: true }, function(stream){
+		navigator.getUserMedia({ video: true, audio: false }, function(stream){ //DEBUG
 			self.stream = stream;
 			self.localVideo.src = window.URL.createObjectURL(stream);
 			self.startRecording(stream);
@@ -129,18 +131,66 @@ AllConnection.prototype.startRecording = function(stream) {
 	var mediaRecorder = new MediaRecorder(stream);
 //	will freeze if lose socket	
 	mediaRecorder.start(500);
+	self.debug_first = true;
+	self.debug_counter = 0;
+	self.debug_firstSend = true;
+	self.debug_totalBytes = 0;
+	self.debug_proceed = false;
+	self.debug_init_segment_cut = 20000;
+	self.debug_initSegments = [];
 
 	mediaRecorder.ondataavailable = function (e) {
 		var reader = new FileReader();
 		reader.addEventListener("loadend", function () {
-
 			var arr = new Uint8Array(reader.result);
-			self.videoData.push(arr);
-
-			if (!self.chunkUpdating){
+			self.videoData.push(arr); // original
+			
+			if (!self.chunkUpdating){  // Original
 				self.chunkUpdating = true;
 				var data = self.videoData.shift();
-				var chunkLength = data.byteLength/self.chunkSize ; 
+				
+				self.debug_totalBytes += data.byteLength;
+				
+				if (self.debug_proceed == false) {
+					console.log("Entering initialization segment gathering loop");
+					if (self.debug_totalBytes > self.debug_init_segment_cut) {
+						var cut = data.byteLength - self.debug_totalBytes + self.debug_init_segment_cut;
+						self.debug_initSegments.push(data.slice(0, cut));
+						data = data.slice(cut + 1, data.byteLength);
+						self.debug_proceed = true;
+						// Proceed
+						
+					} else {
+						self.debug_initSegments.push(data);
+						self.debug_proceed = false;
+						self.chunkUpdating = false;
+						// do not proceed
+					}
+				}
+				
+				if (self.debug_proceed == true) {
+					console.log("Entering media segment sending loop");
+					var chunkLength = data.byteLength / self.chunkSize ; 
+
+					for (var i = 0; i<= chunkLength ; i++){
+						if (data.byteLength < self.chunkSize*(i + 1)){
+							var endByte = data.byteLength;
+						} else{
+							var endByte = self.chunkSize*(i + 1);
+						}
+						self.chunks.push(data.slice(self.chunkSize* i, endByte));
+						
+						var chunk = self.chunks.shift();
+						self.sendStreamBuffer(chunk);
+						//self.sendStreamBuffer();
+						if (endByte === data.byteLength){
+							self.chunkUpdating = false;
+						} 
+					}
+				}
+				
+				/* Original
+				var chunkLength = data.byteLength / self.chunkSize ; 
 
 				for (var i = 0; i<= chunkLength ; i++){
 					if (data.byteLength < self.chunkSize*(i + 1)){
@@ -150,15 +200,17 @@ AllConnection.prototype.startRecording = function(stream) {
 					}
 					self.chunks.push(data.slice(self.chunkSize* i, endByte));
 
-				//	var chunk = self.chunks.shift();
-					self.sendStreamBuffer();
+					var chunk = self.chunks.shift();
+					self.sendStreamBuffer(chunk);
+					//self.sendStreamBuffer();
 					if (endByte === data.byteLength){
 						self.chunkUpdating = false;
 					} 
 				}
+				*/
 			}
 		});
-		console.log(e.data);
+		//console.log(e.data);
 		reader.readAsArrayBuffer(e.data);
 	};
 
@@ -167,13 +219,27 @@ AllConnection.prototype.startRecording = function(stream) {
 	};
 }
 
-AllConnection.prototype.sendStreamBuffer = function(){
-	console.log("here");
+AllConnection.prototype.sendStreamBuffer = function(chunk){
+// AllConnection.prototype.sendStreamBuffer = function(){
+	//console.log("here");
 	var self = this;
 	for (var i in self.peerList){
-		var chunk = self.chunks.shift();
-		console.log("here");
+		//var chunk = self.chunks.shift();
+		
+		//console.log("here");
 		console.log("child is " + self.peerList[i]);
+		if (self.debug_firstSend) {
+			console.log("Sending initialization segments");
+			console.log(self.debug_initSegments.length);
+			for (var j=0; j<self.debug_initSegments.length; j++){
+				var data = self.debug_initSegments.shift();
+				console.log("->Sending initialization segments part ", j, " with bytelength ", data.byteLength);
+				self.connection[self.peerList[i]].dataChannel.send(data);
+			}
+			self.debug_firstSend = false;
+			console.log("Sending initialization segments completed");
+		}
+		console.log("Sending media segments");
 		self.connection[self.peerList[i]].dataChannel.send(chunk);
 	}
 }
@@ -197,18 +263,33 @@ function DataChannel(p2pConnection, socket, peer, sourceBuffer){
 	this.chunks = [];
 	this.videoData = [];
 	this.chunkSize = 10000;
+	this.debug_one_time_flag = true;
 }
 
 DataChannel.prototype.open = function(){
 	var self = this;
 	// could change to other 
+	window.initSegments = []; //debug
+	
 	setInterval(function(){			
-		console.log("here");
+		//console.log("here");
 		if (self.chunks.length > 0 && !self.sourceBuffer.updating){
-			console.log(self.sourceBuffer);
 			var data = self.chunks.shift();
+			// Debug -> Try to identify initialization segments
+			console.log(window.localVideo.readyState);
+			/*
+			if (window.localVideo.readyState < 4) {
+				window.initSegments.push(data);
+				//console.log(window.localVideo.currentTime = 100);
+				//self.sourceBuffer.remove(0, 0)
+			}
+			*/
+			if (window.localVideo.readyState == 4 && self.debug_one_time_flag) {
+				self.debug_one_time_flag = false;
+				window.localVideo.currentTime = 1000;
+			}
 			self.sourceBuffer.appendBuffer(data);
-		}}, 10);
+		}}, 1);
 
 	var dataChannelOptions = {
 			ordered: true,
